@@ -109,7 +109,7 @@ class KeyboardController(Controller):
 if __name__ == '__main__':
 
     test_controller = Controller()
-    test_controller.add_button(Button(action=lambda x,y: print(x,y), location=(0.25,0.5), size=(0.15,0.5), color="#999999"))
+    test_controller.add_button(Button(action=lambda x,y: print(x,y), location=(0.25,0.5), size=(0.15,0.5), color="#FF0000"))
     test_controller.add_button(Button(action=lambda x,y: print(x,y), location=(0.50,0.5), size=(0.15,0.5), color='#00FF00'))
     test_controller.add_button(Button(action=lambda x,y: print(x,y), location=(0.75,0.5), size=(0.15,0.5), color='#0000FF'))
 

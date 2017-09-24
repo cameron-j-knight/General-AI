@@ -1,4 +1,11 @@
+"""
+Author: Cameron Knight
+Description: Utility to wrapp arrays to be mutable
+"""
 class InPlaceWrapper():
+    """
+    Mutable wrapper for a value
+    """
     def __init__(self,value):
         self.value = value
 
@@ -13,7 +20,9 @@ class InPlaceWrapper():
 
 
 class InPlaceArray():
-
+    """
+    Mutable Array wrapper
+    """
     def __init__(self, *args):
         self.array = []
         for arg in args:
@@ -61,7 +70,7 @@ class InPlaceArray():
         return self.__str__()
 
 if __name__ == '__main__':
-    a = InPlaceArray(*range(1,10000))
+    a = InPlaceArray(*range(1,10))
     a = a + [12,13,14]
     print('a: ', a)
     b = a[0]
@@ -71,3 +80,6 @@ if __name__ == '__main__':
     b.value += 10
     print('a: ', a)
     print('b: ', b)
+
+    for i in a:
+        print(i)
