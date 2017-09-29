@@ -11,6 +11,12 @@ import torch.nn.init as init
 
 
 def add_helper(value, tryIndex):
+    """
+    checks if value is indexed to return indexed value
+    :param value: value to test
+    :param tryIndex: index to try
+    :return:
+    """
     try:
         return value[tryIndex]
     except:
@@ -29,7 +35,6 @@ class Policy(nn.Module):
         conv_output_width = WIDTH_IN
 
         super(Policy, self).__init__()
-
         # Encoder
         self.conv1 = nn.Conv2d(3, 64,kernel_size=4)
         conv_output_height, conv_output_width = self._calculate_conv_size(self.conv1,(conv_output_height,conv_output_width))
@@ -52,27 +57,42 @@ class Policy(nn.Module):
         self.pool3 = nn.MaxPool2d(kernel_size=2, return_indices=True)
         conv_output_height, conv_output_width = self._calculate_conv_size(self.pool3,(conv_output_height,conv_output_width))
 
-        self.fully_connected = nn.Linear(conv_output_width * conv_output_height * 16, 512)
+        self.fully_connected = nn.Linear(conv_output_width * conv_output_height * 16, 4)
+
+        self.encoded = nn.Linear(conv_output_width * conv_output_height * 16, 512)
 
         self.reconnect = nn.Linear(512,conv_output_width * conv_output_height * 16)
 
-        # Classification
-        self.class1 = nn.Linear(512,128)
-        self.class2 = nn.Linear(128,28)
-        self.output = nn.Linear(28,4)
+        # # Classification
+        # self.class1 = nn.Linear(512,128)
+        # self.class2 = nn.Linear(128,28)
+        # self.output = nn.Linear(28,4)
 
 
 
-        def deconv_from_conv(conv):
-            return nn.ConvTranspose2d(conv.out_channels, conv.in_channels, conv.kernel_size)
+        def deconv_from_conv(conv, kernal_size):
+            return nn.ConvTranspose2d(in_channels=conv.out_channels,
+                                      out_channels=conv.in_channels,
+                                      kernel_size=kernal_size,
+                                      stride=1,
+                                      output_padding=0,
+                                      )
         #Decoder
         self.unpool3 = nn.MaxUnpool2d(2)
-        self.deconv4 = deconv_from_conv(self.conv4)
-        self.deconv3 = deconv_from_conv(self.conv3)
+        self.deconv4 = deconv_from_conv(self.conv4,5)
+        self.deconv3 = deconv_from_conv(self.conv3,4)
         self.unpool2 = nn.MaxUnpool2d(2)
-        self.deconv2 = deconv_from_conv(self.conv2)
+        self.deconv2 = deconv_from_conv(self.conv2,5)
         self.unpool1 = nn.MaxUnpool2d(2)
-        self.deconv1 = deconv_from_conv(self.conv1)
+        self.deconv1 = deconv_from_conv(self.conv1,5)
+
+        # self.autoencoder =  [self.conv1, self.conv2, self.conv3, self.conv4, self.pool1, self.pool2, self.pool3,
+        #                     self.deconv1,self.deconv2, self.deconv3, self.deconv4, self.unpool1, self.unpool2,
+        #                      self.unpool3]
+        #
+        # self.classifier = [self.conv1, self.conv2, self.conv3, self.conv4, self.pool1, self.pool2, self.pool3,
+        #                    self.class1, self.class2, self.output]
+
 
         # Initialization
         # init.xavier_uniform(self.conv1.weight)
@@ -105,20 +125,20 @@ class Policy(nn.Module):
         x = self.conv4(x)
         x, pool3_indicies = self.pool3(x)
         x = F.relu(x)
-
         encoded_size = x.size()
-        x = F.relu(self.fully_connected(x.view(x.size(0), -1)))
+        y = self.encoded(x.view(x.size(0), -1))
+        x = self.fully_connected(x.view(x.size(0), -1))
 
         #deconv
-        y = F.relu(self.reconnect(x)).view(encoded_size)
+        y = self.reconnect(y).view(encoded_size)
         y = F.relu(self.deconv3(self.deconv4(self.unpool3(y,pool3_indicies),output_size=conv4_size),output_size=conv3_size))
         y = F.relu(self.deconv2(self.unpool2(y,pool2_indicies),output_size=conv2_size))
         y = F.relu(self.deconv1(self.unpool1(y,pool1_indicies),output_size=conv1_size))
 
         #classification
-        x = F.relu(self.class1(x))
-        x = F.relu(self.class2(x))
-        x = F.relu(self.output(x))
+        # x = F.relu(self.class1(x))
+        # x = F.relu(self.class2(x))
+        # x = F.relu(self.output(x))
         return x,y
 
 
@@ -126,18 +146,19 @@ HEIGHT_IN = 256
 WIDTH_IN = 256
 if __name__ == '__main__':
     import numpy as np
-    batch_size = 1
+    batch_size = 5
     p = Policy().cuda()
-    optimizer = optim.Adam(p.parameters(),lr=.001)
+    optimizer = optim.Adam(p.parameters(),lr=.1)
 
 
 
-    for i in range(100):
+    for i in range(10000):
         a = Variable(torch.FloatTensor(np.random.uniform(0,1,(batch_size,3,HEIGHT_IN,WIDTH_IN)))).cuda()
         o, auto_encode = p(a)
-        loss = F.cross_entropy(auto_encode,a)
+        loss =  torch.sum(F.cosine_similarity(auto_encode,a))
+        print(loss.size())
         loss.backward()
-        print("outs:", o)
-        print("loss:",loss)
-        print('+'*20)
+        # print("outs:", o)
+        print("step:",i,"loss:",loss.data[0]/(256**2))
+        # print('+'*20)
         optimizer.step()
