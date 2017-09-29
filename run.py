@@ -25,11 +25,12 @@ import torch.nn as nn
 import SimpleModelTest
 
 #Hyperparameters
-batch_size = 10
+batch_size = 5
 iterations = 1000
 max_lifetime = 2000
 memory_size = 2000
 learning_rate = 1e-2
+gamma = .99
 
 Transition = namedtuple('Transition',
                         ('state', 'action', 'future_state', 'reward'))
@@ -63,7 +64,11 @@ class Memory():
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size):
-        return random.sample(self.memory, batch_size)
+        samp = random.sample(self.memory, batch_size)
+        while(len([True for i in samp if i.future_state[-1] is not None])):
+            samp = random.sample(self.memory, batch_size)
+
+        return samp
 
     def __len__(self):
         return len(self.memory)
@@ -97,28 +102,36 @@ def optimize_model(model, optimizer, memory):
     reward_batch = Variable(torch.cat(batch.reward)).cuda()
     # Compute Q(s_t, a) - the model computes Q(s_t), then we select the
     # columns of actions taken
-    state_action_values = model(state_batch).gather(1, action_batch.view(-1,1)).cuda()
+    action_res, autoencode_res = model(state_batch)
+    state_action_values = action_res.gather(1, action_batch.view(-1,1)).cuda()
 
     # Compute V(s_{t+1}) for all next states.
-    next_state_values = Variable(torch.zeros(non_final_mask.size())).cuda()
-    next_state_values[non_final_mask] = model(non_final_next_states)
+    next_state_values = Variable(torch.zeros(batch_size)).cuda()
+    next_state_values, next_enc = model(non_final_next_states)
+    next_state_values = next_state_values.max(1)[0]
     # Now, we don't want to mess up the loss with a volatile flag, so let's
     # clear it. After this, we'll just end up with a Variable that has
     # requires_grad=False
     next_state_values.volatile = False
     # Compute the expected Q values
-    expected_state_action_values = (next_state_values * .99) + reward_batch
+    expected_state_action_values = (next_state_values * gamma) + reward_batch
 
     # Compute Huber loss
     loss = F.smooth_l1_loss(state_action_values, expected_state_action_values)
+    loss_auto = torch.sum(torch.pow(state_batch - autoencode_res, 2))
+    print("loss = ", loss_auto.data[0])
 
     # Optimize the model
     optimizer.zero_grad()
+    loss = loss + loss_auto
     loss.backward()
-    #Clamp gradients between -1 and 1
-    for param in model.parameters():
-        param.grad.data.clamp_(-1, 1)
     optimizer.step()
+    #optimizer.zero_grad()
+    # loss.backward()
+    #optimizer.step()
+
+
+
 
 
 def image_to_tensor(img, size=256):
@@ -141,7 +154,7 @@ def move_from_prob(probs):
     :return: an action to be parsed by the network
     """
     _, action = torch.max(probs,1)
-    action = action[0]
+    action = action.data[0]
     act = [('KeyEvent', 'left', False),('KeyEvent', 'right', False), ('KeyEvent', 'up', False)]
     if(action == 0):
         act = [('KeyEvent', 'left', False), ('KeyEvent', 'right', False), ('KeyEvent', 'up', True)]
@@ -165,6 +178,8 @@ def train():
     observation = env.reset()
 
     policy = SimpleModelTest.Policy().cuda()
+
+    #update to use only relevant params
     optimizer = optim.Adam(policy.parameters(), lr=learning_rate)
 
     # Graphing
@@ -186,14 +201,14 @@ def train():
                 vision = observation[0]['vision']
 
                 vision_tensor = image_to_tensor(vision)
-                action_probabilities = policy(Variable(vision_tensor).cuda()).data
+                action_probabilities, enc = policy(Variable(vision_tensor).cuda())
 
                 action = [move_from_prob(action_probabilities)]
 
                 observation, reward, done, info = env.step(action)
                 total_reward += reward[0]
-                action_tensor = torch.max(action_probabilities,1)[1]
-                reward_tensor = torch.FloatTensor(reward)
+                action_tensor = torch.max(action_probabilities.data,1)[1]
+                reward_tensor = torch.FloatTensor([r/100 for r in reward])
                 memory.push(vision_tensor, action_tensor, reward_tensor)
                 #Check if stuff is happening
                 reward_met += reward[0]
