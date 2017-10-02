@@ -1,4 +1,4 @@
-# GeneralAITest
+# General AI
 a General AI for playing games. Example of general intellegence discussed in [this](https://www.cs.toronto.edu/~vmnih/docs/dqn.pdf) paper.
 
 ## Running
