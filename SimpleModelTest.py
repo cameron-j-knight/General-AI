@@ -126,11 +126,11 @@ class Policy(nn.Module):
         x, pool3_indicies = self.pool3(x)
         x = F.relu(x)
         encoded_size = x.size()
-        y = self.encoded(x.view(x.size(0), -1))
-        x = self.fully_connected(x.view(x.size(0), -1))
+        y = F.relu(self.encoded(x.view(x.size(0), -1)))
+        x = F.relu(self.fully_connected(x.view(x.size(0), -1)))
 
         #deconv
-        y = self.reconnect(y).view(encoded_size)
+        y = F.relu(self.reconnect(y).view(encoded_size))
         y = F.relu(self.deconv3(self.deconv4(self.unpool3(y,pool3_indicies),output_size=conv4_size),output_size=conv3_size))
         y = F.relu(self.deconv2(self.unpool2(y,pool2_indicies),output_size=conv2_size))
         y = F.relu(self.deconv1(self.unpool1(y,pool1_indicies),output_size=conv1_size))
